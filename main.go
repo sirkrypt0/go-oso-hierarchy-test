@@ -47,13 +47,29 @@ func main() {
 	if err := db.Preload(clause.Associations).Find(&subTeam).Error; err != nil {
 		log.Fatalf("loading team: %v", err)
 	}
-	log.Printf("Sub Team:\n%#v", rootTeam)
+	log.Printf("Sub Team:\n%#v", subTeam)
 
 	for _, perm := range permissions {
 		if err := oso.Authorize(user, perm, subTeam); err != nil {
 			log.Fatalf("User cannot %s subTeam: %v", perm, err)
 		} else {
 			log.Printf("User %s subTeam ✔️", perm)
+		}
+	}
+
+	fmt.Println("\n### Checking sub sub team")
+	subSubTeam := Team{ID: 3}
+	if err := db.Preload(clause.Associations).Find(&subSubTeam).Error; err != nil {
+		log.Fatalf("loading subsub team: %v", err)
+	}
+	log.Printf("SubSub Team:\n%#v", subSubTeam)
+	log.Printf("SubSub Team Parent:\n%#v", subSubTeam.Parent)
+
+	for _, perm := range permissions {
+		if err := oso.Authorize(user, perm, subSubTeam); err != nil {
+			log.Fatalf("User cannot %s subSubTeam: %v", perm, err)
+		} else {
+			log.Printf("User %s subSubTeam ✔️", perm)
 		}
 	}
 }
@@ -128,6 +144,10 @@ func setupDB() *gorm.DB {
 	subTeam := Team{ID: 2, Name: "Sub", ParentID: rootTeam.ID}
 	if err := db.Create(&subTeam).Error; err != nil {
 		log.Fatalf("creating sub team: %v", err)
+	}
+	subSubTeam := Team{ID: 3, Name: "SubSub", ParentID: subTeam.ID}
+	if err := db.Create(&subSubTeam).Error; err != nil {
+		log.Fatalf("creating sub sub team: %v", err)
 	}
 
 	// Assign user to teams

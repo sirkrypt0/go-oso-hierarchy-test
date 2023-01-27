@@ -26,7 +26,7 @@ resource Team {
 }
 
 has_relation(parent: Team, "parent", team: Team) if
-    team.ParentID = parent.ID;
+    team.Parent = parent;
 
 has_role(user: User, name: String, team: Team) if
     role in user.Teams and
