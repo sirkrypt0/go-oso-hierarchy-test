@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"strings"
 
 	"github.com/osohq/go-oso"
@@ -123,7 +124,7 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			// log.Printf("ExecuteQuery User: %#v", w)
+			log.Printf("ExecuteQuery User: %#v", w)
 			return w, nil
 		case Team:
 			v := make([]Team, 0)
@@ -132,7 +133,7 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			// log.Printf("ExecuteQuery Team: %#v", w)
+			log.Printf("ExecuteQuery Team: %#v", w)
 			return w, nil
 		case UserTeamRole:
 			v := make([]UserTeamRole, 0)
@@ -141,7 +142,7 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			// log.Printf("ExecuteQuery UserTeamRole: %#v", w)
+			log.Printf("ExecuteQuery UserTeamRole: %#v", w)
 			return w, nil
 		}
 	}

@@ -85,15 +85,20 @@ func setupOso(db *gorm.DB) *oso.Oso {
 		oso: &oso,
 	})
 
-	oso.RegisterClassWithNameAndFields(reflect.TypeOf(User{}), nil, "User", map[string]interface{}{
-		"ID": "Integer",
-		"Teams": osoTypes.Relation{
-			Kind:       "many",
-			OtherType:  "UserTeamRole",
-			MyField:    "ID",
-			OtherField: "UserID",
-		},
-	})
+	// If we make sure that the user's teams are preloaded, we don't need to specify the teams relation here.
+	// Otherwise, Oso would query the teams itself every time it evaluates a `role in user.Teams` rule.
+	oso.RegisterClass(reflect.TypeOf(User{}), nil)
+
+	// oso.RegisterClassWithNameAndFields(reflect.TypeOf(User{}), nil, "User", map[string]interface{}{
+	// 	"ID": "Integer",
+	// 	"Teams": osoTypes.Relation{
+	// 		Kind:       "many",
+	// 		OtherType:  "UserTeamRole",
+	// 		MyField:    "ID",
+	// 		OtherField: "UserID",
+	// 	},
+	// })
+
 	oso.RegisterClassWithNameAndFields(reflect.TypeOf(Team{}), nil, "Team", map[string]interface{}{
 		"ID": "Integer",
 		"Parent": osoTypes.Relation{
@@ -149,11 +154,19 @@ func setupDB() *gorm.DB {
 	if err := db.Create(&subSubTeam).Error; err != nil {
 		log.Fatalf("creating sub sub team: %v", err)
 	}
+	otherTeam := Team{ID: 10, Name: "OtherTeam"}
+	if err := db.Create(&otherTeam).Error; err != nil {
+		log.Fatalf("creating other team: %v", err)
+	}
 
 	// Assign user to teams
 	rootUserRole := UserTeamRole{ID: 1, UserID: user.ID, TeamID: rootTeam.ID, Role: "owner"}
 	if err := db.Create(&rootUserRole).Error; err != nil {
 		log.Fatalf("assigning user to root team: %v", err)
+	}
+	otherUserRole := UserTeamRole{ID: 2, UserID: user.ID, TeamID: otherTeam.ID, Role: "guest"}
+	if err := db.Create(&otherUserRole).Error; err != nil {
+		log.Fatalf("assigning user to other team: %v", err)
 	}
 
 	return db
