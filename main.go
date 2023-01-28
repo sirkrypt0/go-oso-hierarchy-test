@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/osohq/go-oso"
 	osoTypes "github.com/osohq/go-oso/types"
 	"gorm.io/driver/sqlite"
@@ -17,22 +18,30 @@ import (
 
 const dbFile = "test.sqlite"
 
-var permissions = []string{"read", "edit", "admin"}
+var (
+	userId      = uuid.New()
+	rootId      = TeamID{uuid.New()}
+	subId       = TeamID{uuid.New()}
+	subSubId    = TeamID{uuid.New()}
+	otherId     = TeamID{uuid.New()}
+	repoId      = uuid.New()
+	otherRepoId = uuid.New()
+)
 
 func main() {
 	db := setupDB()
 	oso := setupOso(db)
 
-	user := User{ID: 1}
+	user := User{ID: userId}
 	if err := db.Preload(clause.Associations).Find(&user).Error; err != nil {
 		log.Fatalf("loading team: %v", err)
 	}
 
 	teams := []Team{
-		{ID: 1},
-		{ID: 2},
-		{ID: 3},
-		{ID: 10},
+		{ID: rootId},
+		{ID: subId},
+		{ID: subSubId},
+		{ID: otherId},
 	}
 
 	for _, t := range teams {
@@ -46,14 +55,14 @@ func main() {
 			log.Fatalf("Couldn't get authorized actions for user: %v", err)
 		}
 		permissions := []string{}
-		for perm, _ := range actions {
+		for perm := range actions {
 			permissions = append(permissions, perm.(string))
 		}
 		fmt.Printf("%v\n", permissions)
 	}
 
 	fmt.Println("\n### Checking repository of root team")
-	repository := Repository{ID: 1}
+	repository := Repository{ID: repoId}
 	if err := db.Preload(clause.Associations).Find(&repository).Error; err != nil {
 		log.Fatalf("loading repository: %v", err)
 	}
@@ -73,7 +82,7 @@ func main() {
 		log.Fatalf("Couldn't get authorized actions for user: %v", err)
 	}
 	permissions := []string{}
-	for perm, _ := range actions {
+	for perm := range actions {
 		permissions = append(permissions, perm.(string))
 	}
 	fmt.Printf("Authorized actions: %v\n", permissions)
@@ -104,33 +113,31 @@ func setupOso(db *gorm.DB) *oso.Oso {
 	// 		OtherField: "UserID",
 	// 	},
 	// })
+	// oso.RegisterClassWithNameAndFields(reflect.TypeOf(UserTeamRole{}), nil, "UserTeamRole", map[string]interface{}{
+	// 	"UserID": "Integer",
+	// 	"TeamID": "Integer",
+	// 	"Role":   "String",
+	// })
 
 	oso.RegisterClassWithNameAndFields(reflect.TypeOf(Team{}), nil, "Team", map[string]interface{}{
-		"ID": "Integer",
+		"ID": "TeamID",
 		"Parent": osoTypes.Relation{
 			Kind:       "one",
 			OtherType:  "Team",
 			MyField:    "ParentID",
 			OtherField: "ID",
 		},
-		"ParentID": "Integer",
-	})
-	oso.RegisterClassWithNameAndFields(reflect.TypeOf(UserTeamRole{}), nil, "UserTeamRole", map[string]interface{}{
-		"ID":     "Integer",
-		"UserID": "Integer",
-		"TeamID": "Integer",
-		"Role":   "String",
+		"ParentID": "TeamID",
 	})
 
 	oso.RegisterClassWithNameAndFields(reflect.TypeOf(Repository{}), nil, "Repository", map[string]interface{}{
-		"ID": "Integer",
 		"Team": osoTypes.Relation{
 			Kind:       "one",
 			OtherType:  "Team",
 			MyField:    "TeamID",
 			OtherField: "ID",
 		},
-		"TeamID": "Integer",
+		"TeamID": "TeamID",
 	})
 
 	if err := oso.LoadFiles([]string{"main.polar"}); err != nil {
@@ -162,19 +169,19 @@ func setupDB() *gorm.DB {
 
 	objects := []interface{}{
 		// User
-		User{ID: 1, Name: "Admin"},
+		User{ID: userId, Name: "Admin"},
 		// Teams
-		Team{ID: 1, Name: "Root"},
-		Team{ID: 2, Name: "Sub", ParentID: 1},
-		Team{ID: 3, Name: "SubSub", ParentID: 2},
-		Team{ID: 10, Name: "OtherTeam"},
+		Team{ID: rootId, Name: "Root"},
+		Team{ID: subId, Name: "Sub", ParentID: &rootId},
+		Team{ID: subSubId, Name: "SubSub", ParentID: &subId},
+		Team{ID: otherId, Name: "OtherTeam"},
 		// User Team Assignment
-		UserTeamRole{UserID: 1, TeamID: 1, Role: "guest"},
-		UserTeamRole{UserID: 1, TeamID: 2, Role: "owner"},
-		UserTeamRole{UserID: 1, TeamID: 10, Role: "guest"},
+		UserTeamRole{UserID: userId, TeamID: rootId, Role: "guest"},
+		UserTeamRole{UserID: userId, TeamID: subId, Role: "owner"},
+		UserTeamRole{UserID: userId, TeamID: otherId, Role: "guest"},
 		// Repos
-		Repository{ID: 1, TeamID: 1},
-		Repository{ID: 2, TeamID: 10},
+		Repository{ID: repoId, TeamID: rootId},
+		Repository{ID: otherRepoId, TeamID: otherId},
 	}
 
 	for _, o := range objects {

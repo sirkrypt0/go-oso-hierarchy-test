@@ -28,7 +28,7 @@ resource Team {
 has_relation(parent: Team, "parent", team: Team) if
     # Apparently, we need this to stop Oso from going higher up the hierarchy.
     # Otherwise, it would expect that it can find a team with ID 0 and fail ... 
-    team.ParentID != 0 and
+    team.ParentID != nil and
     team.Parent = parent;
 
 has_role(user: User, name: String, team: Team) if

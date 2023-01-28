@@ -3,6 +3,7 @@ module oso-go-test
 go 1.19
 
 require (
+	github.com/google/uuid v1.3.0
 	github.com/osohq/go-oso v0.26.4
 	gorm.io/driver/sqlite v1.4.4
 	gorm.io/gorm v1.24.3

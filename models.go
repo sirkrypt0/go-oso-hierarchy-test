@@ -1,39 +1,57 @@
 package main
 
+import "github.com/google/uuid"
+
 type User struct {
-	ID   int
+	ID   uuid.UUID
 	Name string `gorm:"not null;"`
 
 	Teams []UserTeamRole `gorm:"constraint:OnDelete:CASCADE;"`
 }
 
 type UserTeamRole struct {
-	ID int
+	ID uuid.UUID
 
 	User   User
-	UserID int
+	UserID uuid.UUID
 
 	Team   Team
-	TeamID int
+	TeamID TeamID
 
 	Role string
 }
 
+// TeamID is the identifier of a team.
+// We use a separate type instead of uuid.UUID directly,
+// as it allows us to implement Oso's Comparer interface and then
+// use the custom uuid.UUID type for = comparison in the Polar definition.
+type TeamID struct {
+	uuid.UUID
+}
+
+func (t TeamID) Equal(other TeamID) bool {
+	return t.UUID == other.UUID
+}
+
+func (t TeamID) Lt(other TeamID) bool {
+	return false
+}
+
 type Team struct {
-	ID   int    `gorm:"not null;"`
+	ID   TeamID `gorm:"not null;"`
 	Name string `gorm:"not null;"`
 
 	// Team hierarchy
 	Parent   *Team
-	ParentID int    `gorm:"default:NULL;"`
-	Subteams []Team `gorm:"foreignKey:ParentID;"`
+	ParentID *TeamID `gorm:"default:NULL;"`
+	Subteams []Team  `gorm:"foreignKey:ParentID;"`
 
 	// Members
 	Users []UserTeamRole `gorm:"constraint:OnDelete:CASCADE;"`
 }
 
 type Repository struct {
-	ID     int
-	Team   Team `gorm:"constraint:OnDelete:CASCADE;"`
-	TeamID int  `gorm:"not null;constraint:OnDelete:CASCADE;"`
+	ID     uuid.UUID
+	Team   Team   `gorm:"constraint:OnDelete:CASCADE;"`
+	TeamID TeamID `gorm:"not null;constraint:OnDelete:CASCADE;"`
 }
