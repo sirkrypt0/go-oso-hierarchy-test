@@ -11,8 +11,9 @@ import (
 
 // GormAdapter is an adapter for Oso based on https://github.com/osohq/oso/blob/main/languages/go/tests/data_filtering_test.go
 type GormAdapter struct {
-	db  *gorm.DB
-	oso *oso.Oso
+	debug bool
+	db    *gorm.DB
+	oso   *oso.Oso
 }
 
 func (a GormAdapter) sqlize(fc osoTypes.FilterCondition) (string, []interface{}) {
@@ -124,7 +125,9 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			log.Printf("ExecuteQuery User: %#v", w)
+			if a.debug {
+				log.Printf("ExecuteQuery User: %#v", w)
+			}
 			return w, nil
 		case Team:
 			v := make([]Team, 0)
@@ -133,7 +136,9 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			log.Printf("ExecuteQuery Team: %#v", w)
+			if a.debug {
+				log.Printf("ExecuteQuery Team: %#v", w)
+			}
 			return w, nil
 		case UserTeamRole:
 			v := make([]UserTeamRole, 0)
@@ -142,7 +147,9 @@ func (a GormAdapter) ExecuteQuery(x interface{}) ([]interface{}, error) {
 			for _, i := range v {
 				w = append(w, i)
 			}
-			log.Printf("ExecuteQuery UserTeamRole: %#v", w)
+			if a.debug {
+				log.Printf("ExecuteQuery UserTeamRole: %#v", w)
+			}
 			return w, nil
 		}
 	}

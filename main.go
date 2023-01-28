@@ -5,12 +5,14 @@ import (
 	"log"
 	"os"
 	"reflect"
+	"time"
 
 	"github.com/osohq/go-oso"
 	osoTypes "github.com/osohq/go-oso/types"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"gorm.io/gorm/logger"
 )
 
 const dbFile = "test.sqlite"
@@ -25,53 +27,56 @@ func main() {
 	if err := db.Preload(clause.Associations).Find(&user).Error; err != nil {
 		log.Fatalf("loading team: %v", err)
 	}
-	log.Printf("User:\n%#v", user)
 
-	fmt.Println("\n### Checking rootTeam")
-	rootTeam := Team{ID: 1}
-	if err := db.Preload(clause.Associations).Find(&rootTeam).Error; err != nil {
-		log.Fatalf("loading team: %v", err)
+	teams := []Team{
+		{ID: 1},
+		{ID: 2},
+		{ID: 3},
+		{ID: 10},
 	}
-	log.Printf("Root Team:\n%#v", rootTeam)
 
-	for _, perm := range permissions {
-		if err := oso.Authorize(user, perm, rootTeam); err != nil {
-			log.Printf("User cannot %s root team: %v", perm, err)
-		} else {
-			log.Printf("User %s rootTeam ✔️", perm)
+	for _, t := range teams {
+		if err := db.Preload(clause.Associations).Find(&t).Error; err != nil {
+			log.Fatalf("loading team: %v", err)
 		}
-	}
+		fmt.Printf("%s: ", t.Name)
 
-	fmt.Println("\n### Checking sub team")
-	subTeam := Team{ID: 2}
-	if err := db.Preload(clause.Associations).Find(&subTeam).Error; err != nil {
-		log.Fatalf("loading team: %v", err)
-	}
-	log.Printf("Sub Team:\n%#v", subTeam)
-
-	for _, perm := range permissions {
-		if err := oso.Authorize(user, perm, subTeam); err != nil {
-			log.Fatalf("User cannot %s subTeam: %v", perm, err)
-		} else {
-			log.Printf("User %s subTeam ✔️", perm)
+		actions, err := oso.AuthorizedActions(user, t, true)
+		if err != nil {
+			log.Fatalf("Couldn't get authorized actions for user: %v", err)
 		}
-	}
-
-	fmt.Println("\n### Checking sub sub team")
-	subSubTeam := Team{ID: 3}
-	if err := db.Preload(clause.Associations).Find(&subSubTeam).Error; err != nil {
-		log.Fatalf("loading subsub team: %v", err)
-	}
-	log.Printf("SubSub Team:\n%#v", subSubTeam)
-	log.Printf("SubSub Team Parent:\n%#v", subSubTeam.Parent)
-
-	for _, perm := range permissions {
-		if err := oso.Authorize(user, perm, subSubTeam); err != nil {
-			log.Fatalf("User cannot %s subSubTeam: %v", perm, err)
-		} else {
-			log.Printf("User %s subSubTeam ✔️", perm)
+		permissions := []string{}
+		for perm, _ := range actions {
+			permissions = append(permissions, perm.(string))
 		}
+		fmt.Printf("%v\n", permissions)
 	}
+
+	fmt.Println("\n### Checking repository of root team")
+	repository := Repository{ID: 1}
+	if err := db.Preload(clause.Associations).Find(&repository).Error; err != nil {
+		log.Fatalf("loading repository: %v", err)
+	}
+
+	// AuthorizedResources for resources that have a relation to a self-relating
+	// resource doesn't work for now.
+	// See https://docs.osohq.com/go/guides/data_filtering.html
+
+	// resources, err := oso.AuthorizedResources(user, "read", "Repository")
+	// if err != nil {
+	// 	log.Fatalf("Couldn't get authorized resources for user: %v", err)
+	// }
+	// fmt.Printf("Authorized Resources: %#v", resources)
+
+	actions, err := oso.AuthorizedActions(user, repository, true)
+	if err != nil {
+		log.Fatalf("Couldn't get authorized actions for user: %v", err)
+	}
+	permissions := []string{}
+	for perm, _ := range actions {
+		permissions = append(permissions, perm.(string))
+	}
+	fmt.Printf("Authorized actions: %v\n", permissions)
 }
 
 func setupOso(db *gorm.DB) *oso.Oso {
@@ -81,8 +86,9 @@ func setupOso(db *gorm.DB) *oso.Oso {
 	}
 
 	oso.SetDataFilteringAdapter(GormAdapter{
-		db:  db,
-		oso: &oso,
+		db:    db,
+		oso:   &oso,
+		debug: false,
 	})
 
 	// If we make sure that the user's teams are preloaded, we don't need to specify the teams relation here.
@@ -116,6 +122,17 @@ func setupOso(db *gorm.DB) *oso.Oso {
 		"Role":   "String",
 	})
 
+	oso.RegisterClassWithNameAndFields(reflect.TypeOf(Repository{}), nil, "Repository", map[string]interface{}{
+		"ID": "Integer",
+		"Team": osoTypes.Relation{
+			Kind:       "one",
+			OtherType:  "Team",
+			MyField:    "TeamID",
+			OtherField: "ID",
+		},
+		"TeamID": "Integer",
+	})
+
 	if err := oso.LoadFiles([]string{"main.polar"}); err != nil {
 		log.Fatalf("error loading polar file: %v", err)
 	}
@@ -125,48 +142,56 @@ func setupOso(db *gorm.DB) *oso.Oso {
 func setupDB() *gorm.DB {
 	os.Remove(dbFile)
 
-	db, err := gorm.Open(sqlite.Open(dbFile), &gorm.Config{})
+	dbLogger := logger.New(log.New(os.Stdout, "\r\n", log.LstdFlags), logger.Config{
+		SlowThreshold: 200 * time.Millisecond,
+		LogLevel:      logger.Warn,
+		Colorful:      true,
+	})
+
+	db, err := gorm.Open(sqlite.Open(dbFile), &gorm.Config{
+		Logger: dbLogger,
+	})
 	if err != nil {
 		log.Fatalf("failed to connect database: %v", err)
 	}
 
 	// Migrate the schema
-	if err := db.AutoMigrate(&User{}, &UserTeamRole{}, &Team{}); err != nil {
+	if err := db.AutoMigrate(&User{}, &UserTeamRole{}, &Team{}, &Repository{}); err != nil {
 		log.Fatalf("migration: %v", err)
 	}
 
-	// Create User
-	user := User{ID: 1, Name: "Admin"}
-	if err := db.Create(&user).Error; err != nil {
-		log.Fatalf("creating user: %v", err)
+	objects := []interface{}{
+		// User
+		User{ID: 1, Name: "Admin"},
+		// Teams
+		Team{ID: 1, Name: "Root"},
+		Team{ID: 2, Name: "Sub", ParentID: 1},
+		Team{ID: 3, Name: "SubSub", ParentID: 2},
+		Team{ID: 10, Name: "OtherTeam"},
+		// User Team Assignment
+		UserTeamRole{UserID: 1, TeamID: 1, Role: "guest"},
+		UserTeamRole{UserID: 1, TeamID: 2, Role: "owner"},
+		UserTeamRole{UserID: 1, TeamID: 10, Role: "guest"},
+		// Repos
+		Repository{ID: 1, TeamID: 1},
+		Repository{ID: 2, TeamID: 10},
 	}
 
-	// Create Teams
-	rootTeam := Team{ID: 1, Name: "Root"}
-	if err := db.Create(&rootTeam).Error; err != nil {
-		log.Fatalf("creating root team: %v", err)
-	}
-	subTeam := Team{ID: 2, Name: "Sub", ParentID: rootTeam.ID}
-	if err := db.Create(&subTeam).Error; err != nil {
-		log.Fatalf("creating sub team: %v", err)
-	}
-	subSubTeam := Team{ID: 3, Name: "SubSub", ParentID: subTeam.ID}
-	if err := db.Create(&subSubTeam).Error; err != nil {
-		log.Fatalf("creating sub sub team: %v", err)
-	}
-	otherTeam := Team{ID: 10, Name: "OtherTeam"}
-	if err := db.Create(&otherTeam).Error; err != nil {
-		log.Fatalf("creating other team: %v", err)
-	}
-
-	// Assign user to teams
-	rootUserRole := UserTeamRole{ID: 1, UserID: user.ID, TeamID: rootTeam.ID, Role: "owner"}
-	if err := db.Create(&rootUserRole).Error; err != nil {
-		log.Fatalf("assigning user to root team: %v", err)
-	}
-	otherUserRole := UserTeamRole{ID: 2, UserID: user.ID, TeamID: otherTeam.ID, Role: "guest"}
-	if err := db.Create(&otherUserRole).Error; err != nil {
-		log.Fatalf("assigning user to other team: %v", err)
+	for _, o := range objects {
+		var err error
+		switch o := o.(type) {
+		case User:
+			err = db.Create(&o).Error
+		case Team:
+			err = db.Create(&o).Error
+		case UserTeamRole:
+			err = db.Create(&o).Error
+		case Repository:
+			err = db.Create(&o).Error
+		}
+		if err != nil {
+			log.Fatalf("creating objects: %v", err)
+		}
 	}
 
 	return db

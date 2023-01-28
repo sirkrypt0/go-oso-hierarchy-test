@@ -20,7 +20,7 @@ type UserTeamRole struct {
 }
 
 type Team struct {
-	ID   int    `gorm:"not null;type:UUID;"`
+	ID   int    `gorm:"not null;"`
 	Name string `gorm:"not null;"`
 
 	// Team hierarchy
@@ -30,4 +30,10 @@ type Team struct {
 
 	// Members
 	Users []UserTeamRole `gorm:"constraint:OnDelete:CASCADE;"`
+}
+
+type Repository struct {
+	ID     int
+	Team   Team `gorm:"constraint:OnDelete:CASCADE;"`
+	TeamID int  `gorm:"not null;constraint:OnDelete:CASCADE;"`
 }
